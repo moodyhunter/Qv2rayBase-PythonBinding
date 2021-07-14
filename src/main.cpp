@@ -77,6 +77,8 @@ namespace pybind11::detail
 #define PROFILE_MANAGER_COMMANDS_ARG_N(name, ...) EXPAND_TYPE_VARIABLES(name, GEN_TYPES_WITH_COUNTER_PAIR(__VA_ARGS__))
 #define PROFILE_MANAGER_COMMANDS_ARG_0(name) EXPAND_CODE_IMPL(name, , )
 
+QList<py::object> objs;
+
 PYBIND11_EMBEDDED_MODULE(Qv2rayBase, m)
 {
     REGISTER_ID_TYPE(GroupId);
@@ -120,18 +122,28 @@ PYBIND11_EMBEDDED_MODULE(Qv2rayBase, m)
     PROFILE_MANAGER_COMMANDS_ARG_N(GetGroupRoutingId, GroupId);
     PROFILE_MANAGER_COMMANDS_ARG_N(GetRouting, RoutingId);
     PROFILE_MANAGER_COMMANDS_ARG_N(UpdateRouting, RoutingId, RoutingObject);
+
+    m.def(
+        "callback",
+        [](py::object arg) {
+            py::print("Register Called!", py::arg("end") = " ");
+            py::print(arg);
+            objs << arg;
+            return arg;
+        },
+        py::arg("arg"));
 }
 
 int main(int, char *[])
 {
     py::scoped_interpreter guard{};
-    py::exec(R"(import Qv2rayBase)");
-    py::exec(R"(x = Qv2rayBase.ConnectionId("connectionid"))");
-    py::exec(R"(print("Type of x = " + str(type(x))))");
-    py::exec(R"(print("ConnectionID to string: " + x.toString()))");
-    py::exec(R"(print("Type of connection id: " + str(type(x.toString()))))");
-    py::exec(R"(print("Default group id: " + str(Qv2rayBase.DefaultGroupId)))");
-    py::exec(R"(print("Default group id string: " + Qv2rayBase.DefaultGroupId.toString()))");
-    // py::eval_file("./test.py");
+    py::eval_file("./test.py");
+
+    for (const auto &f : objs)
+    {
+        py::print("Invoking callback: ", py::arg("end") = " ");
+        py::print(f);
+        f();
+    }
     return 0;
 }
