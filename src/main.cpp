@@ -10,6 +10,7 @@ namespace py = pybind11;
 
 namespace pybind11::detail
 {
+    // Thanks https://gist.github.com/imikejackson/d13a00a639271eb99379ebcc95d12424
     template<>
     struct type_caster<QString>
     {
@@ -17,18 +18,47 @@ namespace pybind11::detail
         PYBIND11_TYPE_CASTER(QString, _("QString"));
         bool load(handle src, bool)
         {
-            value = QString::fromStdString(py::str(src));
+            if (!src)
+                return false;
+
+            handle load_src = src;
+            if (PyUnicode_Check(load_src.ptr()))
+            {
+                object temp = reinterpret_steal<object>(PyUnicode_AsUTF8String(load_src.ptr()));
+                if (!temp) /* A UnicodeEncodeError occured */
+                {
+                    PyErr_Clear();
+                    return false;
+                }
+                load_src = temp;
+            }
+            char *buffer = nullptr;
+            ssize_t length = 0;
+            int err = PYBIND11_BYTES_AS_STRING_AND_SIZE(load_src.ptr(), &buffer, &length);
+            if (err == -1) /* A TypeError occured */
+            {
+                PyErr_Clear();
+                return false;
+            }
+            value = QString::fromUtf8(buffer, static_cast<int>(length));
             return true;
         }
+
         static handle cast(const QString &src, return_value_policy /* policy */, handle /* parent */)
         {
-            return py::cast(src.toStdString());
+#if PY_VERSION_HEX >= 0x03030000 // Python 3.3
+            assert(sizeof(QChar) == 2);
+            return PyUnicode_FromKindAndData(PyUnicode_2BYTE_KIND, src.constData(), src.length());
+#else
+            QByteArray a = src.toUtf8();
+            return PyUnicode_FromStringAndSize(a.data(), (ssize_t) a.length());
+#endif
         }
     };
 } // namespace pybind11::detail
 
 #define REGISTER_ID_TYPE(type) py::class_<type>(m, #type).def(py::init<const QString &>()).def("toString", &type::toString).def("isNull", &type::isNull)
-#define REGISTER_ID_TYPE_VALUE(id) m.attr(#id) = id;
+#define REGISTER_ID_TYPE_VALUE(id) m.attr(#id) = &id
 
 #define TAKE_FIRST_EXPAND(x, y) x
 #define TAKE_FIRST_IMPL(x) TAKE_FIRST_EXPAND x
@@ -57,12 +87,12 @@ PYBIND11_EMBEDDED_MODULE(Qv2rayBase, m)
     REGISTER_ID_TYPE(LatencyTestEngineId);
     REGISTER_ID_TYPE(SubscriptionDecoderId);
 
-    REGISTER_ID_TYPE_VALUE(DefaultGroupId)
-    REGISTER_ID_TYPE_VALUE(DefaultRoutingId)
-    REGISTER_ID_TYPE_VALUE(NullConnectionId)
-    REGISTER_ID_TYPE_VALUE(NullGroupId)
-    REGISTER_ID_TYPE_VALUE(NullKernelId)
-    REGISTER_ID_TYPE_VALUE(NullRoutingId)
+    REGISTER_ID_TYPE_VALUE(DefaultGroupId);
+    REGISTER_ID_TYPE_VALUE(DefaultRoutingId);
+    REGISTER_ID_TYPE_VALUE(NullConnectionId);
+    REGISTER_ID_TYPE_VALUE(NullGroupId);
+    REGISTER_ID_TYPE_VALUE(NullKernelId);
+    REGISTER_ID_TYPE_VALUE(NullRoutingId);
 
     auto ProfileManagerModule = m.def_submodule("ProfileManager");
 
@@ -95,13 +125,13 @@ PYBIND11_EMBEDDED_MODULE(Qv2rayBase, m)
 int main(int, char *[])
 {
     py::scoped_interpreter guard{};
-    py::exec("import Qv2rayBase");
-    py::exec("x = Qv2rayBase.ConnectionId(\"OK\")");
-    py::exec("print(type(x))");
-    py::exec("print(x.toString())");
-    py::exec("print(type(x.toString()))");
-    py::exec("print(Qv2rayBase.DefaultGroupId)");
-    py::exec("print(Qv2rayBase.DefaultGroupId.toString())");
-    py::exec("print(Qv2rayBase.ProfileManager.GetConnections())");
+    py::exec(R"(import Qv2rayBase)");
+    py::exec(R"(x = Qv2rayBase.ConnectionId("connectionid"))");
+    py::exec(R"(print("Type of x = " + str(type(x))))");
+    py::exec(R"(print("ConnectionID to string: " + x.toString()))");
+    py::exec(R"(print("Type of connection id: " + str(type(x.toString()))))");
+    py::exec(R"(print("Default group id: " + str(Qv2rayBase.DefaultGroupId)))");
+    py::exec(R"(print("Default group id string: " + Qv2rayBase.DefaultGroupId.toString()))");
+    // py::eval_file("./test.py");
     return 0;
 }
