@@ -7,7 +7,7 @@ add_subdirectory(interface)
 
 option(QV2RAY_PYBIND_STUBGEN "Generate stubs" OFF)
 if(QV2RAY_PYBIND_STUBGEN)
-    add_compile_definitions(-DQV2RAY_PYBIND_STUBGEN=1)
+    add_compile_definitions(QV2RAY_PYBIND_STUBGEN=1)
 endif()
 
 add_executable(embedded_python src/main.cpp src/QJsonCaster.hpp src/QContainerCaster.hpp)
