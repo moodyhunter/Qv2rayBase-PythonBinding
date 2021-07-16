@@ -24,5 +24,10 @@ jobs:
     - name: Build
       # Build your program with the given configuration
       run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+      
+    - name: Generate stub
+      run: |
+        pip install mypy
+        ${{github.workspace}}/build/embedded_python
 
       
