@@ -1,10 +1,9 @@
 #pragma once
 
-#include "pybind11/pybind11.h"
-
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <pybind11/pybind11.h>
 
 namespace py = pybind11;
 
@@ -107,7 +106,7 @@ namespace pybind11::detail
     struct type_caster<QJsonValue>
     {
       public:
-        PYBIND11_TYPE_CASTER(QJsonValue, _("json"));
+        PYBIND11_TYPE_CASTER(QJsonValue, _("json.json"));
 
         bool load(handle src, bool)
         {
@@ -126,7 +125,7 @@ namespace pybind11::detail
     struct type_caster<QJsonObject>
     {
       public:
-        PYBIND11_TYPE_CASTER(QJsonObject, _("json"));
+        PYBIND11_TYPE_CASTER(QJsonObject, _("json.json"));
 
         bool load(handle src, bool)
         {

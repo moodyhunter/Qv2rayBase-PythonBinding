@@ -1,4 +1,5 @@
 import Qv2rayBase
+import sys
 import json
 
 x = Qv2rayBase.ConnectionId("OK")
@@ -39,3 +40,4 @@ print(conn.toJson())
 
 
 print(Qv2rayBase.ProfileContent())
+print(Qv2rayBase.ProfileContent().toJson())

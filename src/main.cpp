@@ -1,62 +1,21 @@
+#include "QContainerCaster.hpp"
 #include "QJsonCaster.hpp"
 #include "QvPlugin/Common/CommonTypes.hpp"
 #include "QvPlugin/PluginInterface.hpp"
 #include "QvPlugin/Utils/ForEachMacros.hpp"
 
 #include <iostream>
+#include <pybind11/chrono.h>
 #include <pybind11/embed.h>
 #include <pybind11/pybind11.h>
 
-namespace py = pybind11;
-
-namespace pybind11::detail
-{
-    // Thanks https://gist.github.com/imikejackson/d13a00a639271eb99379ebcc95d12424
-    template<>
-    struct type_caster<QString>
-    {
-      public:
-        PYBIND11_TYPE_CASTER(QString, _("QString"));
-        bool load(handle src, bool)
-        {
-            if (!src)
-                return false;
-
-            handle load_src = src;
-            if (PyUnicode_Check(load_src.ptr()))
-            {
-                object temp = reinterpret_steal<object>(PyUnicode_AsUTF8String(load_src.ptr()));
-                if (!temp) /* A UnicodeEncodeError occured */
-                {
-                    PyErr_Clear();
-                    return false;
-                }
-                load_src = temp;
-            }
-            char *buffer = nullptr;
-            ssize_t length = 0;
-            int err = PYBIND11_BYTES_AS_STRING_AND_SIZE(load_src.ptr(), &buffer, &length);
-            if (err == -1) /* A TypeError occured */
-            {
-                PyErr_Clear();
-                return false;
-            }
-            value = QString::fromUtf8(buffer, length);
-            return true;
-        }
-
-        static handle cast(const QString &src, return_value_policy /* policy */, handle /* parent */)
-        {
-#if PY_VERSION_HEX >= 0x03030000 // Python 3.3
-            assert(sizeof(QChar) == 2);
-            return PyUnicode_FromKindAndData(PyUnicode_2BYTE_KIND, src.constData(), src.length());
+#ifdef QV2RAY_PYTHON_BINDING_LIBRARY
+#define QV2RAY_PYBIND_MODULE PYBIND11_MODULE
 #else
-            QByteArray a = src.toUtf8();
-            return PyUnicode_FromStringAndSize(a.data(), (ssize_t) a.length());
+#define QV2RAY_PYBIND_MODULE PYBIND11_EMBEDDED_MODULE
 #endif
-        }
-    };
-} // namespace pybind11::detail
+
+namespace py = pybind11;
 
 #define TAKE_FIRST_EXPAND(x, y) x
 #define TAKE_FIRST_IMPL(x) TAKE_FIRST_EXPAND x
@@ -117,8 +76,9 @@ namespace pybind11::detail
 
 QList<py::function> objs;
 
-PYBIND11_EMBEDDED_MODULE(Qv2rayBase, m)
+QV2RAY_PYBIND_MODULE(Qv2rayBase, m)
 {
+    PyCapsule_Import(PyDateTime_CAPSULE_NAME, 0);
     REGISTER_ID_TYPE(ConnectionId);
     REGISTER_ID_TYPE(GroupId);
     REGISTER_ID_TYPE(RoutingId);
@@ -139,35 +99,6 @@ PYBIND11_EMBEDDED_MODULE(Qv2rayBase, m)
     REGISTER_JSON_TYPE(RuleExtraSettings);
     REGISTER_JSON_TYPE(BalancerSelectorSettings);
 
-    {
-        auto ProfileManagerModule = m.def_submodule("ProfileManager");
-
-        REGISTER_PROFILEMANAGER_FUNC_ARG0(GetConnections);
-        REGISTER_PROFILEMANAGER_FUNC_ARG0(GetGroups);
-        REGISTER_PROFILEMANAGER_FUNC_ARG0(StopConnection);
-        REGISTER_PROFILEMANAGER_FUNC_ARG0(RestartConnection);
-
-        REGISTER_PROFILEMANAGER_FUNC(IsConnected, ProfileId);
-        REGISTER_PROFILEMANAGER_FUNC(GetConnection, ConnectionId);
-        REGISTER_PROFILEMANAGER_FUNC(GetConnectionObject, ConnectionId);
-        REGISTER_PROFILEMANAGER_FUNC(GetGroupObject, GroupId);
-        REGISTER_PROFILEMANAGER_FUNC(GetConnections, GroupId);
-        REGISTER_PROFILEMANAGER_FUNC(GetGroups, ConnectionId);
-        REGISTER_PROFILEMANAGER_FUNC(StartConnection, ProfileId);
-        REGISTER_PROFILEMANAGER_FUNC(CreateConnection, ProfileContent, QString, GroupId);
-        REGISTER_PROFILEMANAGER_FUNC(RenameConnection, ConnectionId, QString);
-        REGISTER_PROFILEMANAGER_FUNC(UpdateConnection, ConnectionId, ProfileContent);
-        REGISTER_PROFILEMANAGER_FUNC(RemoveFromGroup, ConnectionId, GroupId);
-        REGISTER_PROFILEMANAGER_FUNC(MoveToGroup, ConnectionId, GroupId, GroupId);
-        REGISTER_PROFILEMANAGER_FUNC(LinkWithGroup, ConnectionId, GroupId);
-        REGISTER_PROFILEMANAGER_FUNC(CreateGroup, QString);
-        REGISTER_PROFILEMANAGER_FUNC(DeleteGroup, GroupId, bool);
-        REGISTER_PROFILEMANAGER_FUNC(RenameGroup, GroupId, QString);
-        REGISTER_PROFILEMANAGER_FUNC(GetGroupRoutingId, GroupId);
-        REGISTER_PROFILEMANAGER_FUNC(GetRouting, RoutingId);
-        REGISTER_PROFILEMANAGER_FUNC(UpdateRouting, RoutingId, RoutingObject);
-    }
-
     REGISTER_DECORATOR(obj)
 
     CLASS_WITH_JSON(ProfileId,                                //
@@ -177,6 +108,21 @@ PYBIND11_EMBEDDED_MODULE(Qv2rayBase, m)
                     F(clear),                                 //
                     F(isNull),                                //
                     REPR("<Qv2rayBase.ProfileId with connection id '" + a.connectionId.toString() + "' and group id '" + a.groupId.toString() + "'>"))
+
+    py::enum_<StatisticsObject::StatisticsType>(m, "StatisticsType")
+        .value("ALL", StatisticsObject::ALL)
+        .value("DIRECT", StatisticsObject::DIRECT)
+        .value("PROXY", StatisticsObject::PROXY);
+
+    py::enum_<OutboundObject::OutboundObjectType>(m, "OutboundObjectType")
+        .value("BALANCER", OutboundObject::BALANCER)
+        .value("CHAIN", OutboundObject::CHAIN)
+        .value("EXTERNAL", OutboundObject::EXTERNAL)
+        .value("ORIGINAL", OutboundObject::ORIGINAL);
+
+    py::enum_<SubscriptionConfigObject::SubscriptionFilterRelation>(m, "SubscriptionFilterRelation")
+        .value("RELATION_OR", SubscriptionConfigObject::SubscriptionFilterRelation::RELATION_OR)
+        .value("RELATION_AND", SubscriptionConfigObject::SubscriptionFilterRelation::RELATION_AND);
 
     CLASS_WITH_JSON(StatisticsObject, F(clear), RW(directUp), RW(directDown));
     CLASS_WITH_JSON(BaseTaggedObject, RW(name), RW(options))
@@ -192,7 +138,15 @@ PYBIND11_EMBEDDED_MODULE(Qv2rayBase, m)
                          RW(includeRelation),                        //
                          RW(excludeRelation))
     CLASS_WITH_BASE_JSON(GroupObject, BaseConfigTaggedObject, RW(connections), RW(route_id), RW(subscription_config))
-    CLASS_WITH_JSON(PortRange, RW(from), RW(to))
+
+    // Do not use CLASS_WITH* macros since "from" is a python keyword.
+    py::class_<PortRange>(m, "PortRange")
+        .def(py::init<>())
+        .def_readwrite("from_port", &PortRange::from)
+        .def_readwrite("to_port", &PortRange::to)
+        .def("loadJson", &PortRange::loadJson)
+        .def("toJson", &PortRange::toJson);
+
     CLASS_WITH_BASE_JSON(RuleObject, BaseTaggedObject, //
                          RW(enabled),                  //
                          RW(inboundTags),              //
@@ -231,8 +185,46 @@ PYBIND11_EMBEDDED_MODULE(Qv2rayBase, m)
     CLASS_WITH_JSON(BasicDNSServerObject, RW(address), RW(port))
     CLASS_WITH_JSON(BasicDNSObject, RW(servers), RW(hosts), RW(extraOptions))
     CLASS_WITH_JSON(ProfileContent, I(const OutboundObject &), RW(defaultKernel), RW(inbounds), RW(outbounds), RW(routing), RW(extraOptions))
+
+    auto ProfileManagerModule = m.def_submodule("ProfileManager");
+
+    REGISTER_PROFILEMANAGER_FUNC_ARG0(GetConnections);
+    REGISTER_PROFILEMANAGER_FUNC_ARG0(GetGroups);
+    REGISTER_PROFILEMANAGER_FUNC_ARG0(StopConnection);
+    REGISTER_PROFILEMANAGER_FUNC_ARG0(RestartConnection);
+
+    REGISTER_PROFILEMANAGER_FUNC(IsConnected, ProfileId);
+    REGISTER_PROFILEMANAGER_FUNC(GetConnection, ConnectionId);
+    REGISTER_PROFILEMANAGER_FUNC(GetConnectionObject, ConnectionId);
+    REGISTER_PROFILEMANAGER_FUNC(GetGroupObject, GroupId);
+    REGISTER_PROFILEMANAGER_FUNC(GetConnections, GroupId);
+    REGISTER_PROFILEMANAGER_FUNC(GetGroups, ConnectionId);
+    REGISTER_PROFILEMANAGER_FUNC(StartConnection, ProfileId);
+    REGISTER_PROFILEMANAGER_FUNC(CreateConnection, ProfileContent, QString, GroupId);
+    REGISTER_PROFILEMANAGER_FUNC(RenameConnection, ConnectionId, QString);
+    REGISTER_PROFILEMANAGER_FUNC(UpdateConnection, ConnectionId, ProfileContent);
+    REGISTER_PROFILEMANAGER_FUNC(RemoveFromGroup, ConnectionId, GroupId);
+    REGISTER_PROFILEMANAGER_FUNC(MoveToGroup, ConnectionId, GroupId, GroupId);
+    REGISTER_PROFILEMANAGER_FUNC(LinkWithGroup, ConnectionId, GroupId);
+    REGISTER_PROFILEMANAGER_FUNC(CreateGroup, QString);
+    REGISTER_PROFILEMANAGER_FUNC(DeleteGroup, GroupId, bool);
+    REGISTER_PROFILEMANAGER_FUNC(RenameGroup, GroupId, QString);
+    REGISTER_PROFILEMANAGER_FUNC(GetGroupRoutingId, GroupId);
+    REGISTER_PROFILEMANAGER_FUNC(GetRouting, RoutingId);
+    REGISTER_PROFILEMANAGER_FUNC(UpdateRouting, RoutingId, RoutingObject);
 }
 
+#ifdef QV2RAY_PYBIND_STUBGEN
+int main(int, char *[])
+{
+    py::scoped_interpreter guard{};
+    py::exec(R"(
+import mypy.stubgen
+options = mypy.stubgen.parse_options(["-mQv2rayBase", "-mQv2rayBase.ProfileManager"])
+mypy.stubgen.generate_stubs(options))");
+    return 0;
+}
+#else
 int main(int, char *[])
 {
     py::scoped_interpreter guard{};
@@ -246,3 +238,4 @@ int main(int, char *[])
     }
     return 0;
 }
+#endif
