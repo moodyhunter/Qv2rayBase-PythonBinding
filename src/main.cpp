@@ -58,12 +58,6 @@ namespace pybind11::detail
     };
 } // namespace pybind11::detail
 
-#define REGISTER_ID_TYPE(type) py::class_<type>(m, #type).def(py::init<const QString &>()).def("toString", &type::toString).def("isNull", &type::isNull)
-#define REGISTER_ID_TYPE_VALUE(id) m.attr(#id) = &id
-
-#define REGISTER_JSON_TYPE(type)                                                                                                                                         \
-    py::class_<type>(m, #type).def(py::init()).def(py::init<const QJsonObject &>()).def("toJson", &type::toJson).def("loadJson", &type::loadJson);
-
 #define TAKE_FIRST_EXPAND(x, y) x
 #define TAKE_FIRST_IMPL(x) TAKE_FIRST_EXPAND x
 #define TAKE_FIRST(...) FOR_EACH_COMMA_DELIM(TAKE_FIRST_IMPL, __VA_ARGS__)
@@ -78,15 +72,34 @@ namespace pybind11::detail
 
 #define EXPAND_CODE_IMPL(name, types, args) ProfileManagerModule.def(#name, [](types) { return Qv2rayPlugin::Qv2rayInterfaceImpl::ProfileManager()->name(args); });
 #define EXPAND_TYPE_VARIABLES(name, ...) EXPAND_CODE_IMPL(name, TAKE_FIRST(__VA_ARGS__), TAKE_SECOND(__VA_ARGS__))
-#define PROFILE_MANAGER_COMMANDS_ARG_N(name, ...) EXPAND_TYPE_VARIABLES(name, GEN_TYPES_WITH_COUNTER_PAIR(__VA_ARGS__))
-#define PROFILE_MANAGER_COMMANDS_ARG_0(name) EXPAND_CODE_IMPL(name, , )
+#define REGISTER_PROFILEMANAGER_FUNC(name, ...) EXPAND_TYPE_VARIABLES(name, GEN_TYPES_WITH_COUNTER_PAIR(__VA_ARGS__))
+#define REGISTER_PROFILEMANAGER_FUNC_ARG0(name) EXPAND_CODE_IMPL(name, , )
+
+#define REGISTER_ID_TYPE(type)                                                                                                                                           \
+    py::class_<type>(m, #type).def(py::init<const QString &>()).def("toString", &type::toString).def("isNull", &type::isNull).def("__repr__", [](const type &a) {        \
+        return "<Qv2rayBase." #type " with content '" + a.toString() + "'>";                                                                                             \
+    })
+#define REGISTER_ID_TYPE_VALUE(id) m.attr(#id) = &id
+
+#define REGISTER_JSON_TYPE(type)                                                                                                                                         \
+    py::class_<type>(m, #type).def(py::init()).def(py::init<const QJsonObject &>()).def("toJson", &type::toJson).def("loadJson", &type::loadJson);
+
+#define REGISTER_DECORATOR(dec)                                                                                                                                          \
+    m.def(#dec, [](py::object arg) {                                                                                                                                     \
+        const auto pyfunc = py::function(arg);                                                                                                                           \
+        const auto funcName = QString::fromStdString(py::str(pyfunc.attr("__name__")));                                                                                  \
+        const auto moduleName = QString::fromStdString(py::str(pyfunc.attr("__module__")));                                                                              \
+        qDebug() << "Decorator" << #dec << "called from function: " << moduleName << funcName;                                                                           \
+        dec##s << pyfunc;                                                                                                                                                \
+        return arg;                                                                                                                                                      \
+    });
 
 QList<py::function> objs;
 
 PYBIND11_EMBEDDED_MODULE(Qv2rayBase, m)
 {
-    REGISTER_ID_TYPE(GroupId);
     REGISTER_ID_TYPE(ConnectionId);
+    REGISTER_ID_TYPE(GroupId);
     REGISTER_ID_TYPE(RoutingId);
     REGISTER_ID_TYPE(PluginId);
     REGISTER_ID_TYPE(KernelId);
@@ -105,44 +118,47 @@ PYBIND11_EMBEDDED_MODULE(Qv2rayBase, m)
     REGISTER_JSON_TYPE(RuleExtraSettings);
     REGISTER_JSON_TYPE(BalancerSelectorSettings);
 
-    auto ProfileManagerModule = m.def_submodule("ProfileManager");
+    {
+        auto ProfileManagerModule = m.def_submodule("ProfileManager");
 
-    PROFILE_MANAGER_COMMANDS_ARG_0(GetConnections);
-    PROFILE_MANAGER_COMMANDS_ARG_0(GetGroups);
-    PROFILE_MANAGER_COMMANDS_ARG_0(StopConnection);
-    PROFILE_MANAGER_COMMANDS_ARG_0(RestartConnection);
+        REGISTER_PROFILEMANAGER_FUNC_ARG0(GetConnections);
+        REGISTER_PROFILEMANAGER_FUNC_ARG0(GetGroups);
+        REGISTER_PROFILEMANAGER_FUNC_ARG0(StopConnection);
+        REGISTER_PROFILEMANAGER_FUNC_ARG0(RestartConnection);
 
-    PROFILE_MANAGER_COMMANDS_ARG_N(IsConnected, ProfileId);
-    PROFILE_MANAGER_COMMANDS_ARG_N(GetConnection, ConnectionId);
-    PROFILE_MANAGER_COMMANDS_ARG_N(GetConnectionObject, ConnectionId);
-    PROFILE_MANAGER_COMMANDS_ARG_N(GetGroupObject, GroupId);
-    PROFILE_MANAGER_COMMANDS_ARG_N(GetConnections, GroupId);
-    PROFILE_MANAGER_COMMANDS_ARG_N(GetGroups, ConnectionId);
-    PROFILE_MANAGER_COMMANDS_ARG_N(StartConnection, ProfileId);
-    PROFILE_MANAGER_COMMANDS_ARG_N(CreateConnection, ProfileContent, QString, GroupId);
-    PROFILE_MANAGER_COMMANDS_ARG_N(RenameConnection, ConnectionId, QString);
-    PROFILE_MANAGER_COMMANDS_ARG_N(UpdateConnection, ConnectionId, ProfileContent);
-    PROFILE_MANAGER_COMMANDS_ARG_N(RemoveFromGroup, ConnectionId, GroupId);
-    PROFILE_MANAGER_COMMANDS_ARG_N(MoveToGroup, ConnectionId, GroupId, GroupId);
-    PROFILE_MANAGER_COMMANDS_ARG_N(LinkWithGroup, ConnectionId, GroupId);
-    PROFILE_MANAGER_COMMANDS_ARG_N(CreateGroup, QString);
-    PROFILE_MANAGER_COMMANDS_ARG_N(DeleteGroup, GroupId, bool);
-    PROFILE_MANAGER_COMMANDS_ARG_N(RenameGroup, GroupId, QString);
-    PROFILE_MANAGER_COMMANDS_ARG_N(GetGroupRoutingId, GroupId);
-    PROFILE_MANAGER_COMMANDS_ARG_N(GetRouting, RoutingId);
-    PROFILE_MANAGER_COMMANDS_ARG_N(UpdateRouting, RoutingId, RoutingObject);
+        REGISTER_PROFILEMANAGER_FUNC(IsConnected, ProfileId);
+        REGISTER_PROFILEMANAGER_FUNC(GetConnection, ConnectionId);
+        REGISTER_PROFILEMANAGER_FUNC(GetConnectionObject, ConnectionId);
+        REGISTER_PROFILEMANAGER_FUNC(GetGroupObject, GroupId);
+        REGISTER_PROFILEMANAGER_FUNC(GetConnections, GroupId);
+        REGISTER_PROFILEMANAGER_FUNC(GetGroups, ConnectionId);
+        REGISTER_PROFILEMANAGER_FUNC(StartConnection, ProfileId);
+        REGISTER_PROFILEMANAGER_FUNC(CreateConnection, ProfileContent, QString, GroupId);
+        REGISTER_PROFILEMANAGER_FUNC(RenameConnection, ConnectionId, QString);
+        REGISTER_PROFILEMANAGER_FUNC(UpdateConnection, ConnectionId, ProfileContent);
+        REGISTER_PROFILEMANAGER_FUNC(RemoveFromGroup, ConnectionId, GroupId);
+        REGISTER_PROFILEMANAGER_FUNC(MoveToGroup, ConnectionId, GroupId, GroupId);
+        REGISTER_PROFILEMANAGER_FUNC(LinkWithGroup, ConnectionId, GroupId);
+        REGISTER_PROFILEMANAGER_FUNC(CreateGroup, QString);
+        REGISTER_PROFILEMANAGER_FUNC(DeleteGroup, GroupId, bool);
+        REGISTER_PROFILEMANAGER_FUNC(RenameGroup, GroupId, QString);
+        REGISTER_PROFILEMANAGER_FUNC(GetGroupRoutingId, GroupId);
+        REGISTER_PROFILEMANAGER_FUNC(GetRouting, RoutingId);
+        REGISTER_PROFILEMANAGER_FUNC(UpdateRouting, RoutingId, RoutingObject);
+    }
 
-#define REGISTER_FUNCTION_DECORATOR(dec)                                                                                                                                 \
-    m.def(#dec, [](py::object arg) {                                                                                                                                     \
-        const auto pyfunc = py::function(arg);                                                                                                                           \
-        const auto funcName = QString::fromStdString(py::str(pyfunc.attr("__name__")));                                                                                  \
-        const auto moduleName = QString::fromStdString(py::str(pyfunc.attr("__module__")));                                                                              \
-        qDebug() << "Decorator" << #dec << "called from function: " << moduleName << funcName;                                                                           \
-        dec##s << pyfunc;                                                                                                                                                \
-        return arg;                                                                                                                                                      \
-    });
+    REGISTER_DECORATOR(obj)
 
-    REGISTER_FUNCTION_DECORATOR(obj)
+    py::class_<ProfileId>(m, "ProfileId")
+        .def(py::init())
+        .def(py::init<const ConnectionId &, const GroupId &>())
+        .def_readwrite("connectionId", &ProfileId::connectionId)
+        .def_readwrite("groupId", &ProfileId ::groupId)
+        .def("clear", &ProfileId::clear)
+        .def("isNull", &ProfileId::isNull)
+        .def("__repr__", [](const ProfileId &a) {
+            return "<Qv2rayBase.ProfileId with connection id '" + a.connectionId.toString() + "' and group id '" + a.groupId.toString() + "'>";
+        });
 }
 
 int main(int, char *[])

@@ -23,8 +23,13 @@ def f2():
 
 
 conn = Qv2rayBase.IOProtocolSettings()
-j = json.loads('{"foo": "bar"}')
+j = json.loads('{"foo": {"bar":["baz", null, 1.0, 2]}}')
 print(type(j))
 conn.loadJson(j)
 
 print(conn.toJson())
+
+profId = Qv2rayBase.ProfileId()
+print(profId.connectionId)
+profId.groupId = Qv2rayBase.GroupId("group")
+print(profId)
