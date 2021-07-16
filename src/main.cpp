@@ -94,6 +94,27 @@ namespace pybind11::detail
         return arg;                                                                                                                                                      \
     });
 
+#define REGISTER_CLASS_COMMAND_I(...) .def(py::init<__VA_ARGS__>())
+#define REGISTER_CLASS_COMMAND_F(field) .def(#field, &_T::field)
+#define REGISTER_CLASS_COMMAND_RW(field) .def_readwrite(#field, &_T::field)
+#define REGISTER_CLASS_COMMAND_REPR(field) .def("__repr__", [](const _T &a) { return field; });
+
+#define REGISTER_CLASS_IMPL(command) REGISTER_CLASS_COMMAND_##command
+
+#define CLASS(Class, ...)                                                                                                                                                \
+    {                                                                                                                                                                    \
+        using _T = Class;                                                                                                                                                \
+        py::class_<Class>(m, #Class).def(py::init<>()) FOR_EACH(REGISTER_CLASS_IMPL, __VA_ARGS__);                                                                       \
+    }
+#define CLASS_WITH_BASE(Class, Base, ...)                                                                                                                                \
+    {                                                                                                                                                                    \
+        using _T = Class;                                                                                                                                                \
+        py::class_<Class, Base>(m, #Class).def(py::init<>()) FOR_EACH(REGISTER_CLASS_IMPL, __VA_ARGS__);                                                                 \
+    }
+
+#define CLASS_WITH_JSON(Class, ...) CLASS(Class, F(toJson), F(loadJson), __VA_ARGS__)
+#define CLASS_WITH_BASE_JSON(Class, Base, ...) CLASS_WITH_BASE(Class, Base, F(toJson), F(loadJson), __VA_ARGS__)
+
 QList<py::function> objs;
 
 PYBIND11_EMBEDDED_MODULE(Qv2rayBase, m)
@@ -149,16 +170,67 @@ PYBIND11_EMBEDDED_MODULE(Qv2rayBase, m)
 
     REGISTER_DECORATOR(obj)
 
-    py::class_<ProfileId>(m, "ProfileId")
-        .def(py::init())
-        .def(py::init<const ConnectionId &, const GroupId &>())
-        .def_readwrite("connectionId", &ProfileId::connectionId)
-        .def_readwrite("groupId", &ProfileId ::groupId)
-        .def("clear", &ProfileId::clear)
-        .def("isNull", &ProfileId::isNull)
-        .def("__repr__", [](const ProfileId &a) {
-            return "<Qv2rayBase.ProfileId with connection id '" + a.connectionId.toString() + "' and group id '" + a.groupId.toString() + "'>";
-        });
+    CLASS_WITH_JSON(ProfileId,                                //
+                    I(const ConnectionId &, const GroupId &), //
+                    RW(connectionId),                         //
+                    RW(groupId),                              //
+                    F(clear),                                 //
+                    F(isNull),                                //
+                    REPR("<Qv2rayBase.ProfileId with connection id '" + a.connectionId.toString() + "' and group id '" + a.groupId.toString() + "'>"))
+
+    CLASS_WITH_JSON(StatisticsObject, F(clear), RW(directUp), RW(directDown));
+    CLASS_WITH_JSON(BaseTaggedObject, RW(name), RW(options))
+    CLASS_WITH_BASE_JSON(BaseConfigTaggedObject, BaseTaggedObject, RW(created), RW(updated))
+    CLASS_WITH_BASE_JSON(ConnectionObject, BaseConfigTaggedObject, RW(last_connected), RW(statistics), RW(latency))
+    CLASS_WITH_BASE_JSON(SubscriptionConfigObject, BaseTaggedObject, //
+                         RW(isSubscription),                         //
+                         RW(address),                                //
+                         RW(type),                                   //
+                         RW(updateInterval),                         //
+                         RW(includeKeywords),                        //
+                         RW(excludeKeywords),                        //
+                         RW(includeRelation),                        //
+                         RW(excludeRelation))
+    CLASS_WITH_BASE_JSON(GroupObject, BaseConfigTaggedObject, RW(connections), RW(route_id), RW(subscription_config))
+    CLASS_WITH_JSON(PortRange, RW(from), RW(to))
+    CLASS_WITH_BASE_JSON(RuleObject, BaseTaggedObject, //
+                         RW(enabled),                  //
+                         RW(inboundTags),              //
+                         RW(outboundTag),              //
+                         RW(sourceAddresses),          //
+                         RW(targetDomains),            //
+                         RW(targetIPs),                //
+                         RW(sourcePort),               //
+                         RW(targetPort),               //
+                         RW(networks),                 //
+                         RW(protocols),                //
+                         RW(processes),                //
+                         RW(extraSettings))
+    CLASS_WITH_JSON(RoutingObject, RW(overrideRules), //
+                    RW(rules),                        //
+                    RW(overrideDNS),                  //
+                    RW(dns),                          //
+                    RW(fakedns),                      //
+                    RW(extraOptions))
+    CLASS_WITH_JSON(MultiplexerObject, RW(enabled), RW(concurrency))
+    CLASS_WITH_JSON(IOConnectionSettings, RW(protocol), RW(address), RW(port), RW(protocolSettings), RW(streamSettings), RW(muxSettings))
+    CLASS_WITH_BASE_JSON(InboundObject, BaseTaggedObject, RW(inboundSettings))
+    CLASS_WITH_BASE_JSON(BalancerSettings, BaseTaggedObject, RW(selectorType), RW(selectorSettings))
+    CLASS_WITH_BASE_JSON(ChainSettings, BaseTaggedObject, RW(chaining_port), RW(chains))
+    CLASS_WITH_BASE_JSON(OutboundObject, BaseTaggedObject, //
+                         I(const IOConnectionSettings &),  //
+                         I(const ConnectionId &),          //
+                         I(const BalancerSettings &),      //
+                         I(const ChainSettings &),         //
+                         RW(objectType),                   //
+                         RW(kernel),                       //
+                         RW(externalId),                   //
+                         RW(outboundSettings),             //
+                         RW(balancerSettings),             //
+                         RW(chainSettings))
+    CLASS_WITH_JSON(BasicDNSServerObject, RW(address), RW(port))
+    CLASS_WITH_JSON(BasicDNSObject, RW(servers), RW(hosts), RW(extraOptions))
+    CLASS_WITH_JSON(ProfileContent, I(const OutboundObject &), RW(defaultKernel), RW(inbounds), RW(outbounds), RW(routing), RW(extraOptions))
 }
 
 int main(int, char *[])
