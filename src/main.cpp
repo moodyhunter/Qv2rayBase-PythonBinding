@@ -1,3 +1,4 @@
+#include "QJsonCaster.hpp"
 #include "QvPlugin/Common/CommonTypes.hpp"
 #include "QvPlugin/PluginInterface.hpp"
 #include "QvPlugin/Utils/ForEachMacros.hpp"
@@ -40,7 +41,7 @@ namespace pybind11::detail
                 PyErr_Clear();
                 return false;
             }
-            value = QString::fromUtf8(buffer, static_cast<int>(length));
+            value = QString::fromUtf8(buffer, length);
             return true;
         }
 
@@ -60,6 +61,9 @@ namespace pybind11::detail
 #define REGISTER_ID_TYPE(type) py::class_<type>(m, #type).def(py::init<const QString &>()).def("toString", &type::toString).def("isNull", &type::isNull)
 #define REGISTER_ID_TYPE_VALUE(id) m.attr(#id) = &id
 
+#define REGISTER_JSON_TYPE(type)                                                                                                                                         \
+    py::class_<type>(m, #type).def(py::init()).def(py::init<const QJsonObject &>()).def("toJson", &type::toJson).def("loadJson", &type::loadJson);
+
 #define TAKE_FIRST_EXPAND(x, y) x
 #define TAKE_FIRST_IMPL(x) TAKE_FIRST_EXPAND x
 #define TAKE_FIRST(...) FOR_EACH_COMMA_DELIM(TAKE_FIRST_IMPL, __VA_ARGS__)
@@ -77,7 +81,7 @@ namespace pybind11::detail
 #define PROFILE_MANAGER_COMMANDS_ARG_N(name, ...) EXPAND_TYPE_VARIABLES(name, GEN_TYPES_WITH_COUNTER_PAIR(__VA_ARGS__))
 #define PROFILE_MANAGER_COMMANDS_ARG_0(name) EXPAND_CODE_IMPL(name, , )
 
-QList<py::object> objs;
+QList<py::function> objs;
 
 PYBIND11_EMBEDDED_MODULE(Qv2rayBase, m)
 {
@@ -95,6 +99,11 @@ PYBIND11_EMBEDDED_MODULE(Qv2rayBase, m)
     REGISTER_ID_TYPE_VALUE(NullGroupId);
     REGISTER_ID_TYPE_VALUE(NullKernelId);
     REGISTER_ID_TYPE_VALUE(NullRoutingId);
+
+    REGISTER_JSON_TYPE(IOProtocolSettings);
+    REGISTER_JSON_TYPE(IOStreamSettings);
+    REGISTER_JSON_TYPE(RuleExtraSettings);
+    REGISTER_JSON_TYPE(BalancerSelectorSettings);
 
     auto ProfileManagerModule = m.def_submodule("ProfileManager");
 
@@ -123,15 +132,17 @@ PYBIND11_EMBEDDED_MODULE(Qv2rayBase, m)
     PROFILE_MANAGER_COMMANDS_ARG_N(GetRouting, RoutingId);
     PROFILE_MANAGER_COMMANDS_ARG_N(UpdateRouting, RoutingId, RoutingObject);
 
-    m.def(
-        "callback",
-        [](py::object arg) {
-            py::print("Register Called!", py::arg("end") = " ");
-            py::print(arg);
-            objs << arg;
-            return arg;
-        },
-        py::arg("arg"));
+#define REGISTER_FUNCTION_DECORATOR(dec)                                                                                                                                 \
+    m.def(#dec, [](py::object arg) {                                                                                                                                     \
+        const auto pyfunc = py::function(arg);                                                                                                                           \
+        const auto funcName = QString::fromStdString(py::str(pyfunc.attr("__name__")));                                                                                  \
+        const auto moduleName = QString::fromStdString(py::str(pyfunc.attr("__module__")));                                                                              \
+        qDebug() << "Decorator" << #dec << "called from function: " << moduleName << funcName;                                                                           \
+        dec##s << pyfunc;                                                                                                                                                \
+        return arg;                                                                                                                                                      \
+    });
+
+    REGISTER_FUNCTION_DECORATOR(obj)
 }
 
 int main(int, char *[])
